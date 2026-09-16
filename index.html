@@ -187,8 +187,7 @@
     <div class="card-title">
       <span>👥 名冊管理</span>
       <div>
-        <button class="btn-secondary" onclick="resetToDefaultRoster()" style="font-size:12px; padding:4px 8px;">重置預設名冊</button>
-        <button class="btn-secondary" onclick="toggleBatchBox()" style="font-size:12px; padding:4px 8px;">批次貼上</button>
+        <button class="btn-secondary" onclick="toggleBatchBox()" style="font-size:12px; padding:4px 8px;">臨時批次貼上</button>
       </div>
     </div>
 
@@ -202,7 +201,7 @@
     <div class="add-form">
       <input type="text" id="rosterNumber" class="input-number" placeholder="背號" />
       <input type="text" id="rosterName" placeholder="姓名..." />
-      <button onclick="addRosterPlayer()">單一新增</button>
+      <button onclick="addRosterPlayer()">臨時新增</button>
     </div>
     <div class="roster-tags" id="rosterList"></div>
   </div>
@@ -243,8 +242,8 @@
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
-  // 📌 內建預設球員名冊
-  var defaultRoster = [
+  // 📌 寫死固定名冊（包含張永宸）
+  var fixedRoster = [
     { id: 1, number: "1", name: "黃昱綸" },
     { id: 2, number: "2", name: "陳聲皓" },
     { id: 3, number: "3", name: "許昭威" },
@@ -292,31 +291,29 @@
     { id: 45, number: "", name: "吳尚霖" },
     { id: 46, number: "", name: "許宏倫" },
     { id: 47, number: "", name: "張探遠" },
-    { id: 48, number: "", name: "李品鋐" }
+    { id: 48, number: "", name: "李品鋐" },
+    { id: 49, number: "", name: "高子淳" },
+    { id: 50, number: "", name: "范譽" },
+    { id: 51, number: "", name: "謝安綸" },
+    { id: 52, number: "", name: "黃振淩" },
+    { id: 53, number: "", name: "葉宸銨" },
+    { id: 54, number: "", name: "蔡文偉" },
+    { id: 55, number: "", name: "黃聖翔" },
+    { id: 56, number: "", name: "張淳嘉" },
+    { id: 57, number: "", name: "李秉軒" },
+    { id: 58, number: "", name: "蔡政哲" },
+    { id: 59, number: "", name: "蔡益宸" },
+    { id: 60, number: "", name: "高睿陽" },
+    { id: 61, number: "", name: "王曦賢" },
+    { id: 62, number: "", name: "呂承恩" }
   ];
 
-  var roster = JSON.parse(localStorage.getItem('team_roster_v4'));
-  if (!roster || !Array.isArray(roster) || roster.length === 0) {
-    roster = JSON.parse(JSON.stringify(defaultRoster));
-  }
-
+  var roster = JSON.parse(JSON.stringify(fixedRoster));
   var attendanceList = [];
 
   function init() {
     document.getElementById('eventDate').value = new Date().toISOString().split('T')[0];
     renderRoster();
-  }
-
-  function saveRoster() {
-    localStorage.setItem('team_roster_v4', JSON.stringify(roster));
-  }
-
-  function resetToDefaultRoster() {
-    if (confirm('確定要還原至初始的預設名冊嗎？')) {
-      roster = JSON.parse(JSON.stringify(defaultRoster));
-      saveRoster();
-      renderRoster();
-    }
   }
 
   function toggleBatchBox() {
@@ -353,7 +350,6 @@
       }
     });
 
-    saveRoster();
     renderRoster();
     textEl.value = '';
     toggleBatchBox();
@@ -370,7 +366,6 @@
       roster.push({ id: Date.now(), number: number, name: name });
       numInput.value = '';
       nameInput.value = '';
-      saveRoster();
       renderRoster();
     } else {
       alert('請輸入姓名！');
@@ -379,7 +374,6 @@
 
   function deleteRosterPlayer(index) {
     roster.splice(index, 1);
-    saveRoster();
     renderRoster();
   }
 
@@ -388,7 +382,7 @@
     listEl.innerHTML = '';
 
     if (roster.length === 0) {
-      listEl.innerHTML = '<div class="empty-tip">尚無名單，請點擊「重置預設名冊」載入名單。</div>';
+      listEl.innerHTML = '<div class="empty-tip">尚無名單。</div>';
     } else {
       roster.forEach(function(player, index) {
         var tag = document.createElement('div');
@@ -514,6 +508,7 @@
 
     var dateVal = document.getElementById('eventDate').value || '未填日期';
     var nameVal = document.getElementById('eventName').value || '未填活動';
+
     var statusOrder = { '準時到': 1, '遲到': 2, '未到': 3 };
 
     var formattedData = attendanceList.map(function(item) {
@@ -532,18 +527,11 @@
 
     var worksheet = XLSX.utils.json_to_sheet(formattedData);
 
-    for (var cell in worksheet) {
-      if (cell[0] === '!') continue;
-      if (cell.indexOf('C') === 0 && cell !== 'C1') {
-        worksheet[cell].t = 's';
-      }
-    }
-
     worksheet['!cols'] = [
-      { wch: 13 },
-      { wch: 15 },
-      { wch: 10 },
       { wch: 14 },
+      { wch: 16 },
+      { wch: 10 },
+      { wch: 16 },
       { wch: 12 },
       { wch: 14 }
     ];
@@ -551,50 +539,7 @@
     var workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "點名紀錄");
 
-    // 1. 使用 XLSX.write 產生 ArrayBuffer
-    var excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'arraybuffer' });
-    var fileName = dateVal + '_' + nameVal + '_點名紀錄.xlsx';
-    var fileType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-
-    // 2. 封裝為 Blob 與 File 物件
-    var blob = new Blob([excelBuffer], { type: fileType });
-    var file = new File([blob], fileName, { type: fileType });
-
-    // 3. 嘗試喚起 Web Share API (iOS Safari 原生面板)
-    var canShare = false;
-    try {
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        canShare = true;
-      }
-    } catch (e) {
-      canShare = false;
-    }
-
-    if (canShare) {
-      navigator.share({
-        files: [file],
-        title: '點名紀錄',
-        text: dateVal + ' ' + nameVal + ' 點名紀錄'
-      }).catch(function(err) {
-        if (err.name !== 'AbortError') {
-          triggerFallbackDownload(blob, fileName);
-        }
-      });
-    } else {
-      // 4. Fallback: Blob 下載機制
-      triggerFallbackDownload(blob, fileName);
-    }
-  }
-
-  function triggerFallbackDownload(blob, fileName) {
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+    XLSX.writeFile(workbook, dateVal + '_' + nameVal + '_點名紀錄.xlsx');
   }
 
   window.onload = init;
