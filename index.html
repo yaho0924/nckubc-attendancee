@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>點名系統</title>
+  <title>點名系統 - 雲端同步版</title>
   <style>
     :root {
       --primary: #1e3a8a;
@@ -27,6 +27,12 @@
       text-align: center;
       margin: 10px 0 20px 0;
       font-size: 22px;
+    }
+    .status-bar {
+      text-align: center;
+      font-size: 12px;
+      color: #64748b;
+      margin-bottom: 10px;
     }
     .card {
       background: var(--card-bg);
@@ -176,11 +182,17 @@
       color: #2563eb;
     }
   </style>
+
+  <!-- 引入 Firebase SDK (v9 兼容版) -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
 
 <div class="container">
-  <h1>📋 點名系統</h1>
+  <h1>📋 點名系統 (雲端同步版)</h1>
+  <div class="status-bar" id="syncStatus">☁️ 正在連線至雲端資料庫...</div>
 
   <!-- 1. 人員名冊管理 -->
   <div class="card">
@@ -201,7 +213,7 @@
     <div class="add-form">
       <input type="text" id="rosterNumber" class="input-number" placeholder="背號" />
       <input type="text" id="rosterName" placeholder="姓名..." />
-      <button onclick="addRosterPlayer()">臨時新增</button>
+      <button onclick="addRosterPlayer()">新增人員</button>
     </div>
     <div class="roster-tags" id="rosterList"></div>
   </div>
@@ -216,11 +228,11 @@
     <div class="event-info-grid">
       <div class="form-group">
         <label>活動日期</label>
-        <input type="date" id="eventDate" />
+        <input type="date" id="eventDate" onchange="saveAttendanceToCloud()" />
       </div>
       <div class="form-group">
         <label>活動名稱</label>
-        <input type="text" id="eventName" placeholder="例如：例行練球 / 友誼賽" value="例行練球" />
+        <input type="text" id="eventName" placeholder="例如：例行練球 / 友誼賽" value="例行練球" oninput="saveAttendanceToCloud()" />
       </div>
     </div>
 
@@ -240,9 +252,24 @@
   <button class="btn-export" onclick="exportToExcel()">📊 匯出 Excel 報表</button>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
-  // 📌 寫死固定名冊（包含張永宸）
+  // 已經填入的 Firebase 設定金鑰
+  const firebaseConfig = {
+    apiKey: "AIzaSyAHoKuxkrPm_pp3-Bb2ieR-JDi25EdAnlo",
+    authDomain: "nckuatten.firebaseapp.com",
+    databaseURL: "https://nckuatten-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "nckuatten",
+    storageBucket: "nckuatten.firebasestorage.app",
+    messagingSenderId: "965603192755",
+    appId: "1:965603192755:web:7108e8282699ab9795e5c6",
+    measurementId: "G-0KB6SDNDNQ"
+  };
+
+  // 初始化 Firebase
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  // 預設名單
   var fixedRoster = [
     { id: 1, number: "1", name: "黃昱綸" },
     { id: 2, number: "2", name: "陳聲皓" },
@@ -313,7 +340,47 @@
 
   function init() {
     document.getElementById('eventDate').value = new Date().toISOString().split('T')[0];
-    renderRoster();
+
+    // 監聽名冊雲端變更
+    db.ref('roster').on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        roster = data;
+      } else {
+        // 若雲端尚無資料，則初始化寫入預設名單
+        db.ref('roster').set(fixedRoster);
+      }
+      renderRoster();
+      document.getElementById('syncStatus').innerText = "🟢 雲端已即時連線與同步";
+    });
+
+    // 監聽點名紀錄雲端變更
+    db.ref('attendanceData').on('value', (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        if (data.eventDate) document.getElementById('eventDate').value = data.eventDate;
+        if (data.eventName) document.getElementById('eventName').value = data.eventName;
+        attendanceList = data.list || [];
+      } else {
+        attendanceList = [];
+      }
+      renderAttendanceTable();
+    });
+  }
+
+  // 儲存至雲端
+  function saveRosterToCloud() {
+    db.ref('roster').set(roster);
+  }
+
+  function saveAttendanceToCloud() {
+    const eventDate = document.getElementById('eventDate').value;
+    const eventName = document.getElementById('eventName').value;
+    db.ref('attendanceData').set({
+      eventDate: eventDate,
+      eventName: eventName,
+      list: attendanceList
+    });
   }
 
   function toggleBatchBox() {
@@ -327,7 +394,6 @@
     if (!text) return alert('請先貼上資料！');
 
     var lines = text.split('\n');
-    var addedCount = 0;
 
     lines.forEach(function(line) {
       var trimmed = line.trim().replace(/✕/g, '');
@@ -346,14 +412,12 @@
 
       if (name) {
         roster.push({ id: Date.now() + Math.random(), number: number, name: name });
-        addedCount++;
       }
     });
 
-    renderRoster();
+    saveRosterToCloud();
     textEl.value = '';
     toggleBatchBox();
-    alert('成功匯入 ' + addedCount + ' 位人員！');
   }
 
   function addRosterPlayer() {
@@ -366,7 +430,7 @@
       roster.push({ id: Date.now(), number: number, name: name });
       numInput.value = '';
       nameInput.value = '';
-      renderRoster();
+      saveRosterToCloud();
     } else {
       alert('請輸入姓名！');
     }
@@ -374,7 +438,7 @@
 
   function deleteRosterPlayer(index) {
     roster.splice(index, 1);
-    renderRoster();
+    saveRosterToCloud();
   }
 
   function renderRoster() {
@@ -393,7 +457,6 @@
         listEl.appendChild(tag);
       });
     }
-    renderAttendanceTable();
   }
 
   function renderAttendanceTable() {
@@ -427,14 +490,14 @@
           </div>
         </td>
         <td>
-          <select onchange="attendanceList[${index}].vote = this.value;">
+          <select onchange="attendanceList[${index}].vote = this.value; saveAttendanceToCloud();">
             <option value="出席" ${item.vote === '出席' ? 'selected' : ''}>出席</option>
             <option value="晚到" ${item.vote === '晚到' ? 'selected' : ''}>晚到</option>
             <option value="不到" ${item.vote === '不到' ? 'selected' : ''}>不到</option>
           </select>
         </td>
         <td>
-          <select onchange="attendanceList[${index}].actual = this.value;">
+          <select onchange="attendanceList[${index}].actual = this.value; saveAttendanceToCloud();">
             <option value="準時到" ${item.actual === '準時到' ? 'selected' : ''}>準時到</option>
             <option value="遲到" ${item.actual === '遲到' ? 'selected' : ''}>遲到</option>
             <option value="未到" ${item.actual === '未到' ? 'selected' : ''}>未到</option>
@@ -478,7 +541,7 @@
 
   function selectPlayer(index, player) {
     attendanceList[index].playerId = player.id;
-    renderAttendanceTable();
+    saveAttendanceToCloud();
   }
 
   function closeAllDropdowns() {
@@ -495,12 +558,12 @@
   function addAttendanceRow() {
     var defaultPlayerId = roster.length > 0 ? roster[0].id : '';
     attendanceList.push({ playerId: defaultPlayerId, vote: '出席', actual: '準時到' });
-    renderAttendanceTable();
+    saveAttendanceToCloud();
   }
 
   function deleteAttendanceRow(index) {
     attendanceList.splice(index, 1);
-    renderAttendanceTable();
+    saveAttendanceToCloud();
   }
 
   function exportToExcel() {
