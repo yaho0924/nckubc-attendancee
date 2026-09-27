@@ -10,6 +10,11 @@
       --bg: #f8fafc;
       --card-bg: #ffffff;
       --border: #cbd5e1;
+      
+      --color-ontime: #16a34a;
+      --color-late: #d97706;
+      --color-leave: #2563eb;
+      --color-absent: #dc2626;
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -104,18 +109,6 @@
       font-size: 16px;
       margin-top: 10px;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th, td {
-      padding: 8px 4px;
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-      font-size: 14px;
-      vertical-align: middle;
-    }
-    th { background: #f1f5f9; }
     .roster-tags {
       display: flex;
       flex-wrap: wrap;
@@ -150,37 +143,96 @@
       margin-bottom: 12px;
       display: none;
     }
-    .dropdown-container {
-      position: relative;
-      width: 100%;
+
+    /* 點名模式切換按鈕區 */
+    .mode-selector {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 16px;
     }
-    .search-input {
-      width: 100%;
-      background: #fff;
+    .mode-btn {
+      background: #e2e8f0;
+      color: #475569;
+      padding: 12px 0;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: bold;
+      border: 2px solid transparent;
+      transition: all 0.2s;
     }
-    .dropdown-list {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      right: 0;
-      max-height: 180px;
-      overflow-y: auto;
-      background: white;
+    .mode-btn.active[data-mode="準時到"] {
+      background: var(--color-ontime);
+      color: white;
+      border-color: #15803d;
+    }
+    .mode-btn.active[data-mode="遲到"] {
+      background: var(--color-late);
+      color: white;
+      border-color: #b45309;
+    }
+    .mode-btn.active[data-mode="請假"] {
+      background: var(--color-leave);
+      color: white;
+      border-color: #1d4ed8;
+    }
+
+    /* 球員點名按鈕網格 */
+    .player-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 8px;
+    }
+    .player-btn {
+      background: #f1f5f9;
+      color: #334155;
       border: 1px solid var(--border);
-      border-radius: 6px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-      z-index: 100;
-      display: none;
-    }
-    .dropdown-item {
-      padding: 8px 10px;
+      padding: 10px 6px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
       cursor: pointer;
-      font-size: 14px;
     }
-    .dropdown-item:hover {
-      background: #eff6ff;
-      color: #2563eb;
+    .player-btn .num {
+      font-size: 11px;
+      opacity: 0.75;
     }
+    .player-btn.status-準時到 {
+      background: #dcfce7;
+      color: #14532d;
+      border-color: #86efac;
+      font-weight: bold;
+    }
+    .player-btn.status-遲到 {
+      background: #fef3c7;
+      color: #78350f;
+      border-color: #fde68a;
+      font-weight: bold;
+    }
+    .player-btn.status-請假 {
+      background: #dbeafe;
+      color: #1e3a8a;
+      border-color: #93c5fd;
+      font-weight: bold;
+    }
+
+    /* 統計摘要 */
+    .summary-bar {
+      display: flex;
+      justify-content: space-around;
+      background: #f8fafc;
+      padding: 10px;
+      border-radius: 8px;
+      margin-top: 14px;
+      font-size: 13px;
+      font-weight: bold;
+    }
+    .summary-item { display: flex; align-items: center; gap: 4px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
   </style>
 
   <!-- 引入 Firebase SDK (v9 兼容版) -->
@@ -222,7 +274,6 @@
   <div class="card">
     <div class="card-title">
       <span>📝 點名紀錄</span>
-      <button onclick="addAttendanceRow()" style="background:#2563eb; font-size:12px; padding:6px 10px;">+ 新增列</button>
     </div>
 
     <div class="event-info-grid">
@@ -236,24 +287,30 @@
       </div>
     </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>球員搜尋（背號/姓名）</th>
-          <th style="width: 80px;">投票</th>
-          <th style="width: 90px;">實際情況</th>
-          <th style="width: 32px;"></th>
-        </tr>
-      </thead>
-      <tbody id="attendanceBody"></tbody>
-    </table>
+    <!-- 三大點名按鈕 -->
+    <div class="mode-selector">
+      <button class="mode-btn active" data-mode="準時到" onclick="setMode('準時到')">🟢 準時到</button>
+      <button class="mode-btn" data-mode="遲到" onclick="setMode('遲到')">🟡 遲到</button>
+      <button class="mode-btn" data-mode="請假" onclick="setMode('請假')">🔵 請假</button>
+    </div>
+
+    <!-- 球員點名選擇區 -->
+    <div class="player-grid" id="playerGrid"></div>
+
+    <!-- 即時人數統計 -->
+    <div class="summary-bar">
+      <span class="summary-item" style="color:var(--color-ontime);"><span class="dot" style="background:var(--color-ontime);"></span>準時到: <span id="countOntime">0</span></span>
+      <span class="summary-item" style="color:var(--color-late);"><span class="dot" style="background:var(--color-late);"></span>遲到: <span id="countLate">0</span></span>
+      <span class="summary-item" style="color:var(--color-leave);"><span class="dot" style="background:var(--color-leave);"></span>請假: <span id="countLeave">0</span></span>
+      <span class="summary-item" style="color:var(--color-absent);"><span class="dot" style="background:var(--color-absent);"></span>缺席: <span id="countAbsent">0</span></span>
+    </div>
   </div>
 
   <button class="btn-export" onclick="exportToExcel()">📊 匯出 Excel 報表</button>
 </div>
 
 <script>
-  // 已經填入的 Firebase 設定金鑰
+  // Firebase 設定金鑰
   const firebaseConfig = {
     apiKey: "AIzaSyAHoKuxkrPm_pp3-Bb2ieR-JDi25EdAnlo",
     authDomain: "nckuatten.firebaseapp.com",
@@ -287,7 +344,6 @@
     { id: 14, number: "26", name: "許恒嘉" },
     { id: 15, number: "27", name: "詹閔任" },
     { id: 16, number: "28", name: "黃家庠" },
-    { id: 17, number: "30", name: "余書農（教練）" },
     { id: 18, number: "31", name: "林塏翔" },
     { id: 19, number: "33", name: "張晉緁" },
     { id: 20, number: "35", name: "王學睿" },
@@ -336,39 +392,37 @@
   ];
 
   var roster = JSON.parse(JSON.stringify(fixedRoster));
-  var attendanceList = [];
+  var attendanceMap = {}; 
+  var currentMode = "準時到"; 
 
   function init() {
     document.getElementById('eventDate').value = new Date().toISOString().split('T')[0];
 
-    // 監聽名冊雲端變更
     db.ref('roster').on('value', (snapshot) => {
       const data = snapshot.val();
       if (data) {
         roster = data;
       } else {
-        // 若雲端尚無資料，則初始化寫入預設名單
         db.ref('roster').set(fixedRoster);
       }
       renderRoster();
+      renderPlayerGrid();
       document.getElementById('syncStatus').innerText = "🟢 雲端已即時連線與同步";
     });
 
-    // 監聽點名紀錄雲端變更
     db.ref('attendanceData').on('value', (snapshot) => {
       const data = snapshot.val();
       if (data) {
         if (data.eventDate) document.getElementById('eventDate').value = data.eventDate;
         if (data.eventName) document.getElementById('eventName').value = data.eventName;
-        attendanceList = data.list || [];
+        attendanceMap = data.map || {};
       } else {
-        attendanceList = [];
+        attendanceMap = {};
       }
-      renderAttendanceTable();
+      renderPlayerGrid();
     });
   }
 
-  // 儲存至雲端
   function saveRosterToCloud() {
     db.ref('roster').set(roster);
   }
@@ -379,8 +433,67 @@
     db.ref('attendanceData').set({
       eventDate: eventDate,
       eventName: eventName,
-      list: attendanceList
+      map: attendanceMap
     });
+  }
+
+  function setMode(mode) {
+    currentMode = mode;
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      if (btn.getAttribute('data-mode') === mode) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
+  function togglePlayerStatus(playerId) {
+    if (attendanceMap[playerId] === currentMode) {
+      delete attendanceMap[playerId];
+    } else {
+      attendanceMap[playerId] = currentMode;
+    }
+    saveAttendanceToCloud();
+  }
+
+  function getSortedRoster() {
+    return roster.slice().sort(function(a, b) {
+      var numA = a.number !== "" && a.number !== undefined ? parseInt(a.number, 10) : Infinity;
+      var numB = b.number !== "" && b.number !== undefined ? parseInt(b.number, 10) : Infinity;
+      if (isNaN(numA)) numA = Infinity;
+      if (isNaN(numB)) numB = Infinity;
+      return numA - numB;
+    });
+  }
+
+  function renderPlayerGrid() {
+    var gridEl = document.getElementById('playerGrid');
+    gridEl.innerHTML = '';
+
+    var sorted = getSortedRoster();
+    var counts = { "準時到": 0, "遲到": 0, "請假": 0, "缺席": 0 };
+
+    sorted.forEach(function(player) {
+      var status = attendanceMap[player.id];
+      if (status) {
+        counts[status] = (counts[status] || 0) + 1;
+      } else {
+        counts["缺席"]++;
+      }
+
+      var btn = document.createElement('button');
+      btn.className = 'player-btn' + (status ? ' status-' + status : '');
+      var numText = player.number ? '#' + player.number : '無背號';
+      btn.innerHTML = `<span class="num">${numText}</span><span>${player.name}</span>`;
+      btn.onclick = function() { togglePlayerStatus(player.id); };
+      gridEl.appendChild(btn);
+    });
+
+    document.getElementById('countOntime').innerText = counts["準時到"];
+    document.getElementById('countLate').innerText = counts["遲到"];
+    document.getElementById('countLeave').innerText = counts["請假"];
+    document.getElementById('countAbsent').innerText = counts["缺席"];
   }
 
   function toggleBatchBox() {
@@ -436,9 +549,11 @@
     }
   }
 
-  function deleteRosterPlayer(index) {
-    roster.splice(index, 1);
+  function deleteRosterPlayer(id) {
+    roster = roster.filter(function(p) { return p.id !== id; });
+    delete attendanceMap[id];
     saveRosterToCloud();
+    saveAttendanceToCloud();
   }
 
   function renderRoster() {
@@ -448,155 +563,70 @@
     if (roster.length === 0) {
       listEl.innerHTML = '<div class="empty-tip">尚無名單。</div>';
     } else {
-      roster.forEach(function(player, index) {
+      var sorted = getSortedRoster();
+      sorted.forEach(function(player) {
         var tag = document.createElement('div');
         tag.className = 'roster-tag';
         var numStr = player.number ? '#' + player.number + ' ' : '';
         tag.innerHTML = '<span>' + numStr + player.name + '</span>' +
-                        '<button onclick="deleteRosterPlayer(' + index + ')">✕</button>';
+                        '<button onclick="deleteRosterPlayer(' + player.id + ')">✕</button>';
         listEl.appendChild(tag);
       });
     }
   }
 
-  function renderAttendanceTable() {
-    var tbody = document.getElementById('attendanceBody');
-    tbody.innerHTML = '';
-
-    if (attendanceList.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" class="empty-tip">點擊「+ 新增列」開始點名。</td></tr>';
-      return;
-    }
-
-    attendanceList.forEach(function(item, index) {
-      var tr = document.createElement('tr');
-      var currentPlayer = roster.find(function(p) { return Number(p.id) === Number(item.playerId); }) || { number: '', name: '' };
-      var currentLabel = currentPlayer.name 
-        ? (currentPlayer.number ? '#' + currentPlayer.number + ' ' + currentPlayer.name : currentPlayer.name) 
-        : '';
-
-      tr.innerHTML = `
-        <td>
-          <div class="dropdown-container">
-            <input 
-              type="text" 
-              class="search-input" 
-              placeholder="搜尋背號或姓名..." 
-              value="${currentLabel}" 
-              onfocus="showDropdown(${index})" 
-              oninput="filterDropdown(${index}, this.value)"
-            />
-            <div class="dropdown-list" id="dropdown-${index}"></div>
-          </div>
-        </td>
-        <td>
-          <select onchange="attendanceList[${index}].vote = this.value; saveAttendanceToCloud();">
-            <option value="出席" ${item.vote === '出席' ? 'selected' : ''}>出席</option>
-            <option value="晚到" ${item.vote === '晚到' ? 'selected' : ''}>晚到</option>
-            <option value="不到" ${item.vote === '不到' ? 'selected' : ''}>不到</option>
-          </select>
-        </td>
-        <td>
-          <select onchange="attendanceList[${index}].actual = this.value; saveAttendanceToCloud();">
-            <option value="準時到" ${item.actual === '準時到' ? 'selected' : ''}>準時到</option>
-            <option value="遲到" ${item.actual === '遲到' ? 'selected' : ''}>遲到</option>
-            <option value="未到" ${item.actual === '未到' ? 'selected' : ''}>未到</option>
-          </select>
-        </td>
-        <td><button style="background:#ef4444; padding:4px 6px; font-size:12px;" onclick="deleteAttendanceRow(${index})">✕</button></td>
-      `;
-      tbody.appendChild(tr);
-    });
-  }
-
-  function showDropdown(index) {
-    closeAllDropdowns();
-    var dropdown = document.getElementById('dropdown-' + index);
-    filterDropdown(index, '');
-    if (dropdown) dropdown.style.display = 'block';
-  }
-
-  function filterDropdown(index, query) {
-    var dropdown = document.getElementById('dropdown-' + index);
-    if (!dropdown) return;
-    dropdown.innerHTML = '';
-    var q = query.toLowerCase().replace('#', '').trim();
-
-    var filtered = roster.filter(function(p) { 
-      return p.name.toLowerCase().indexOf(q) !== -1 || (p.number && p.number.toString().indexOf(q) !== -1);
-    });
-
-    if (filtered.length === 0) {
-      dropdown.innerHTML = '<div class="dropdown-item" style="color:#94a3b8;">無符合人員</div>';
-    } else {
-      filtered.forEach(function(p) {
-        var item = document.createElement('div');
-        item.className = 'dropdown-item';
-        item.innerText = p.number ? '#' + p.number + ' ' + p.name : p.name;
-        item.onclick = function() { selectPlayer(index, p); };
-        dropdown.appendChild(item);
-      });
-    }
-  }
-
-  function selectPlayer(index, player) {
-    attendanceList[index].playerId = player.id;
-    saveAttendanceToCloud();
-  }
-
-  function closeAllDropdowns() {
-    var lists = document.querySelectorAll('.dropdown-list');
-    lists.forEach(function(el) { el.style.display = 'none'; });
-  }
-
-  document.addEventListener('click', function(e) {
-    if (!e.target.closest('.dropdown-container')) {
-      closeAllDropdowns();
-    }
-  });
-
-  function addAttendanceRow() {
-    var defaultPlayerId = roster.length > 0 ? roster[0].id : '';
-    attendanceList.push({ playerId: defaultPlayerId, vote: '出席', actual: '準時到' });
-    saveAttendanceToCloud();
-  }
-
-  function deleteAttendanceRow(index) {
-    attendanceList.splice(index, 1);
-    saveAttendanceToCloud();
-  }
-
+  // 修改後的 Excel 匯出邏輯：將準時到、遲到、請假、缺席分欄顯示
   function exportToExcel() {
-    if (attendanceList.length === 0) return alert('尚無點名紀錄！');
-
     var dateVal = document.getElementById('eventDate').value || '未填日期';
     var nameVal = document.getElementById('eventName').value || '未填活動';
 
-    var statusOrder = { '準時到': 1, '遲到': 2, '未到': 3 };
+    var sortedRoster = getSortedRoster();
 
-    var formattedData = attendanceList.map(function(item) {
-      var player = roster.find(function(p) { return Number(p.id) === Number(item.playerId); }) || { number: '', name: '未選擇' };
-      return {
-        "活動日期": dateVal,
-        "活動名稱": nameVal,
-        "背號": player.number ? '#' + player.number : '-',
-        "姓名": player.name,
-        "原投票狀況": item.vote,
-        "實際到場狀況": item.actual
-      };
-    }).sort(function(a, b) {
-      return (statusOrder[a.實際到場狀況] || 99) - (statusOrder[b.實際到場狀況] || 99);
+    // 將球員依狀態歸類
+    var ontimeList = [];
+    var lateList = [];
+    var leaveList = [];
+    var absentList = [];
+
+    sortedRoster.forEach(function(player) {
+      var label = (player.number ? '#' + player.number + ' ' : '') + player.name;
+      var status = attendanceMap[player.id] || "缺席";
+
+      if (status === "準時到") ontimeList.push(label);
+      else if (status === "遲到") lateList.push(label);
+      else if (status === "請假") leaveList.push(label);
+      else absentList.push(label);
     });
 
-    var worksheet = XLSX.utils.json_to_sheet(formattedData);
+    // 找出最長的一行數量
+    var maxRows = Math.max(ontimeList.length, lateList.length, leaveList.length, absentList.length);
 
+    // 建立試算表抬頭
+    var exportRows = [
+      ["活動日期", dateVal, "", ""],
+      ["活動名稱", nameVal, "", ""],
+      [], // 空白行
+      ["準時到", "遲到", "請假", "缺席"] // 四欄標題並排
+    ];
+
+    // 逐列塞入各類別的球員
+    for (var i = 0; i < maxRows; i++) {
+      exportRows.push([
+        ontimeList[i] || "",
+        lateList[i] || "",
+        leaveList[i] || "",
+        absentList[i] || ""
+      ]);
+    }
+
+    var worksheet = XLSX.utils.aoa_to_sheet(exportRows);
+
+    // 設定每一欄的寬度
     worksheet['!cols'] = [
-      { wch: 14 },
-      { wch: 16 },
-      { wch: 10 },
-      { wch: 16 },
-      { wch: 12 },
-      { wch: 14 }
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 18 }
     ];
 
     var workbook = XLSX.utils.book_new();
