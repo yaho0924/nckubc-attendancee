@@ -279,11 +279,11 @@
     <div class="event-info-grid">
       <div class="form-group">
         <label>活動日期</label>
-        <input type="date" id="eventDate" onchange="saveAttendanceToCloud()" />
+        <input type="date" id="eventDate" onchange="onDateOrNameChange()" />
       </div>
       <div class="form-group">
         <label>活動名稱</label>
-        <input type="text" id="eventName" placeholder="例如：例行練球 / 友誼賽" value="例行練球" oninput="saveAttendanceToCloud()" />
+        <input type="text" id="eventName" placeholder="例如：例行練球 / 友誼賽" value="例行練球" onchange="onDateOrNameChange()" />
       </div>
     </div>
 
@@ -394,10 +394,12 @@
   var roster = JSON.parse(JSON.stringify(fixedRoster));
   var attendanceMap = {}; 
   var currentMode = "準時到"; 
+  var currentRef = null; // 紀錄目前 Firebase 監聽位置
 
   function init() {
     document.getElementById('eventDate').value = new Date().toISOString().split('T')[0];
 
+    // 1. 載入與監聽名冊
     db.ref('roster').on('value', (snapshot) => {
       const data = snapshot.val();
       if (data) {
@@ -410,13 +412,40 @@
       document.getElementById('syncStatus').innerText = "🟢 雲端已即時連線與同步";
     });
 
-    db.ref('attendanceData').on('value', (snapshot) => {
+    // 2. 載入目前日期的點名資料
+    listenAttendanceForCurrentDate();
+  }
+
+  // 取得安全的 Firebase key 格式
+  function getRecordKey() {
+    const dateVal = document.getElementById('eventDate').value || new Date().toISOString().split('T')[0];
+    const nameVal = (document.getElementById('eventName').value || '例行練球').trim();
+    // 把不符合 Firebase key 規範的字元替換掉
+    const safeName = nameVal.replace(/[.#$/[\]]/g, '_');
+    return `${dateVal}_${safeName}`;
+  }
+
+  // 切換日期或活動名稱時觸發
+  function onDateOrNameChange() {
+    listenAttendanceForCurrentDate();
+  }
+
+  // 監聽特定日期的點名紀錄
+  function listenAttendanceForCurrentDate() {
+    const recordKey = getRecordKey();
+
+    // 先取消上一個日期的監聽
+    if (currentRef) {
+      currentRef.off();
+    }
+
+    currentRef = db.ref('attendanceRecords/' + recordKey);
+    currentRef.on('value', (snapshot) => {
       const data = snapshot.val();
-      if (data) {
-        if (data.eventDate) document.getElementById('eventDate').value = data.eventDate;
-        if (data.eventName) document.getElementById('eventName').value = data.eventName;
-        attendanceMap = data.map || {};
+      if (data && data.map) {
+        attendanceMap = data.map;
       } else {
+        // 如果該日期還沒有資料，則初始為空（預設皆為缺席）
         attendanceMap = {};
       }
       renderPlayerGrid();
@@ -428,12 +457,15 @@
   }
 
   function saveAttendanceToCloud() {
+    const recordKey = getRecordKey();
     const eventDate = document.getElementById('eventDate').value;
     const eventName = document.getElementById('eventName').value;
-    db.ref('attendanceData').set({
+
+    db.ref('attendanceRecords/' + recordKey).set({
       eventDate: eventDate,
       eventName: eventName,
-      map: attendanceMap
+      map: attendanceMap,
+      updatedAt: Date.now()
     });
   }
 
@@ -575,14 +607,13 @@
     }
   }
 
-  // 修改後的 Excel 匯出邏輯：將準時到、遲到、請假、缺席分欄顯示
+  // Excel 匯出邏輯：將準時到、遲到、請假、缺席分欄顯示
   function exportToExcel() {
     var dateVal = document.getElementById('eventDate').value || '未填日期';
     var nameVal = document.getElementById('eventName').value || '未填活動';
 
     var sortedRoster = getSortedRoster();
 
-    // 將球員依狀態歸類
     var ontimeList = [];
     var lateList = [];
     var leaveList = [];
@@ -598,18 +629,15 @@
       else absentList.push(label);
     });
 
-    // 找出最長的一行數量
     var maxRows = Math.max(ontimeList.length, lateList.length, leaveList.length, absentList.length);
 
-    // 建立試算表抬頭
     var exportRows = [
       ["活動日期", dateVal, "", ""],
       ["活動名稱", nameVal, "", ""],
       [], // 空白行
-      ["準時到", "遲到", "請假", "缺席"] // 四欄標題並排
+      ["準時到", "遲到", "請假", "缺席"]
     ];
 
-    // 逐列塞入各類別的球員
     for (var i = 0; i < maxRows; i++) {
       exportRows.push([
         ontimeList[i] || "",
@@ -621,7 +649,6 @@
 
     var worksheet = XLSX.utils.aoa_to_sheet(exportRows);
 
-    // 設定每一欄的寬度
     worksheet['!cols'] = [
       { wch: 18 },
       { wch: 18 },
