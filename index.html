@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>點名系統 - 雲端同步版</title>
+  <title>點名與投票系統 - 雲端同步版</title>
   <style>
     :root {
       --primary: #1e3a8a;
@@ -15,6 +15,7 @@
       --color-late: #d97706;
       --color-leave: #2563eb;
       --color-absent: #dc2626;
+      --color-novote: #6b7280;
     }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -51,6 +52,17 @@
       font-weight: bold;
       margin-bottom: 12px;
       color: var(--primary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .section-label {
+      font-size: 14px;
+      font-weight: bold;
+      color: #334155;
+      margin: 16px 0 8px 0;
+      padding-bottom: 4px;
+      border-bottom: 1px dashed var(--border);
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -144,19 +156,19 @@
       display: none;
     }
 
-    /* 點名模式切換按鈕區 */
+    /* 模式切換按鈕區 */
     .mode-selector {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
       gap: 8px;
-      margin-bottom: 16px;
+      margin-bottom: 10px;
     }
     .mode-btn {
       background: #e2e8f0;
       color: #475569;
-      padding: 12px 0;
+      padding: 8px 0;
       border-radius: 8px;
-      font-size: 15px;
+      font-size: 13px;
       font-weight: bold;
       border: 2px solid transparent;
       transition: all 0.2s;
@@ -176,18 +188,29 @@
       color: white;
       border-color: #1d4ed8;
     }
+    .mode-btn.active[data-mode="到"] {
+      background: #0d9488;
+      color: white;
+      border-color: #0f766e;
+    }
+    .mode-btn.active[data-mode="不到"] {
+      background: #4b5563;
+      color: white;
+      border-color: #374151;
+    }
 
     /* 球員點名按鈕網格 */
     .player-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(95px, 1fr));
       gap: 8px;
+      margin-bottom: 12px;
     }
     .player-btn {
       background: #f1f5f9;
       color: #334155;
       border: 1px solid var(--border);
-      padding: 10px 6px;
+      padding: 8px 6px;
       border-radius: 8px;
       font-size: 13px;
       display: flex;
@@ -196,11 +219,27 @@
       justify-content: center;
       gap: 2px;
       cursor: pointer;
+      position: relative;
     }
     .player-btn .num {
       font-size: 11px;
       opacity: 0.75;
     }
+
+    /* 投票區專用樣式 */
+    .player-btn.vote-status-到 {
+      background: #ccfbf1;
+      color: #0f766e;
+      border-color: #5eead4;
+      font-weight: bold;
+    }
+    .player-btn.vote-status-不到 {
+      background: #f1f5f9;
+      color: #64748b;
+      border-color: #cbd5e1;
+    }
+
+    /* 點名區專用樣式 */
     .player-btn.status-準時到 {
       background: #dcfce7;
       color: #14532d;
@@ -225,11 +264,13 @@
       display: flex;
       justify-content: space-around;
       background: #f8fafc;
-      padding: 10px;
+      padding: 10px 4px;
       border-radius: 8px;
       margin-top: 14px;
-      font-size: 13px;
+      font-size: 12px;
       font-weight: bold;
+      flex-wrap: wrap;
+      gap: 6px;
     }
     .summary-item { display: flex; align-items: center; gap: 4px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
@@ -243,7 +284,7 @@
 <body>
 
 <div class="container">
-  <h1>📋 點名系統 (雲端同步版)</h1>
+  <h1>📋 點名與投票系統 (雲端同步版)</h1>
   <div class="status-bar" id="syncStatus">☁️ 正在連線至雲端資料庫...</div>
 
   <!-- 1. 人員名冊管理 -->
@@ -270,10 +311,10 @@
     <div class="roster-tags" id="rosterList"></div>
   </div>
 
-  <!-- 2. 今日點名紀錄 -->
+  <!-- 2. 今日點名與投票紀錄 -->
   <div class="card">
     <div class="card-title">
-      <span>📝 點名紀錄</span>
+      <span>📝 活動紀錄與點名</span>
     </div>
 
     <div class="event-info-grid">
@@ -287,15 +328,28 @@
       </div>
     </div>
 
-    <!-- 三大點名按鈕 -->
-    <div class="mode-selector">
-      <button class="mode-btn active" data-mode="準時到" onclick="setMode('準時到')">🟢 準時到</button>
-      <button class="mode-btn" data-mode="遲到" onclick="setMode('遲到')">🟡 遲到</button>
-      <button class="mode-btn" data-mode="請假" onclick="setMode('請假')">🔵 請假</button>
+    <!-- 🗳️️ 獨立投票區域 -->
+    <div class="section-label">
+      <span>投票狀況</span>
     </div>
+    <div class="mode-selector">
+      <button class="mode-btn mode-vote active" data-mode="到" onclick="setVoteMode('到')">到</button>
+      <button class="mode-btn mode-vote" data-mode="不到" onclick="setVoteMode('不到')">不到</button>
+    </div>
+    <!-- 投票球員名單網格 -->
+    <div class="player-grid" id="votePlayerGrid"></div>
 
-    <!-- 球員點名選擇區 -->
-    <div class="player-grid" id="playerGrid"></div>
+    <!-- 🟢 獨立點名區域 -->
+    <div class="section-label">
+      <span>出席狀況</span>
+    </div>
+    <div class="mode-selector">
+      <button class="mode-btn mode-attend active" data-mode="準時到" onclick="setAttendMode('準時到')">🟢 準時到</button>
+      <button class="mode-btn mode-attend" data-mode="遲到" onclick="setAttendMode('遲到')">🟡 遲到</button>
+      <button class="mode-btn mode-attend" data-mode="請假" onclick="setAttendMode('請假')">🔵 請假</button>
+    </div>
+    <!-- 點名球員名單網格 -->
+    <div class="player-grid" id="attendPlayerGrid"></div>
 
     <!-- 即時人數統計 -->
     <div class="summary-bar">
@@ -303,6 +357,7 @@
       <span class="summary-item" style="color:var(--color-late);"><span class="dot" style="background:var(--color-late);"></span>遲到: <span id="countLate">0</span></span>
       <span class="summary-item" style="color:var(--color-leave);"><span class="dot" style="background:var(--color-leave);"></span>請假: <span id="countLeave">0</span></span>
       <span class="summary-item" style="color:var(--color-absent);"><span class="dot" style="background:var(--color-absent);"></span>缺席: <span id="countAbsent">0</span></span>
+      <span class="summary-item" style="color:var(--color-novote);"><span class="dot" style="background:var(--color-novote);"></span>未投票: <span id="countNoVote">0</span></span>
     </div>
   </div>
 
@@ -376,7 +431,7 @@
     { id: 47, number: "", name: "張探遠" },
     { id: 48, number: "", name: "李品鋐" },
     { id: 49, number: "", name: "高子淳" },
-    { id: 50, number: "", name: "范譽" },
+    { id: 50, number: "", name: "範譽" },
     { id: 51, number: "", name: "謝安綸" },
     { id: 52, number: "", name: "黃振淩" },
     { id: 53, number: "", name: "葉宸銨" },
@@ -392,9 +447,12 @@
   ];
 
   var roster = JSON.parse(JSON.stringify(fixedRoster));
-  var attendanceMap = {}; 
-  var currentMode = "準時到"; 
-  var currentRef = null; // 紀錄目前 Firebase 監聽位置
+  var attendanceMap = {}; // 紀錄點名：準時到 / 遲到 / 請假
+  var voteMap = {};       // 紀錄投票：到 / 不到
+  
+  var currentAttendMode = "準時到"; 
+  var currentVoteMode = "到";
+  var currentRef = null;
 
   function init() {
     document.getElementById('eventDate').value = new Date().toISOString().split('T')[0];
@@ -408,33 +466,28 @@
         db.ref('roster').set(fixedRoster);
       }
       renderRoster();
-      renderPlayerGrid();
+      renderAllGrids();
       document.getElementById('syncStatus').innerText = "🟢 雲端已即時連線與同步";
     });
 
-    // 2. 載入目前日期的點名資料
+    // 2. 載入目前日期的紀錄
     listenAttendanceForCurrentDate();
   }
 
-  // 取得安全的 Firebase key 格式
   function getRecordKey() {
     const dateVal = document.getElementById('eventDate').value || new Date().toISOString().split('T')[0];
     const nameVal = (document.getElementById('eventName').value || '例行練球').trim();
-    // 把不符合 Firebase key 規範的字元替換掉
     const safeName = nameVal.replace(/[.#$/[\]]/g, '_');
     return `${dateVal}_${safeName}`;
   }
 
-  // 切換日期或活動名稱時觸發
   function onDateOrNameChange() {
     listenAttendanceForCurrentDate();
   }
 
-  // 監聽特定日期的點名紀錄
   function listenAttendanceForCurrentDate() {
     const recordKey = getRecordKey();
 
-    // 先取消上一個日期的監聽
     if (currentRef) {
       currentRef.off();
     }
@@ -442,13 +495,14 @@
     currentRef = db.ref('attendanceRecords/' + recordKey);
     currentRef.on('value', (snapshot) => {
       const data = snapshot.val();
-      if (data && data.map) {
-        attendanceMap = data.map;
+      if (data) {
+        attendanceMap = data.map || {};
+        voteMap = data.voteMap || {};
       } else {
-        // 如果該日期還沒有資料，則初始為空（預設皆為缺席）
         attendanceMap = {};
+        voteMap = {};
       }
-      renderPlayerGrid();
+      renderAllGrids();
     });
   }
 
@@ -465,13 +519,14 @@
       eventDate: eventDate,
       eventName: eventName,
       map: attendanceMap,
+      voteMap: voteMap,
       updatedAt: Date.now()
     });
   }
 
-  function setMode(mode) {
-    currentMode = mode;
-    document.querySelectorAll('.mode-btn').forEach(btn => {
+  function setAttendMode(mode) {
+    currentAttendMode = mode;
+    document.querySelectorAll('.mode-attend').forEach(btn => {
       if (btn.getAttribute('data-mode') === mode) {
         btn.classList.add('active');
       } else {
@@ -480,11 +535,33 @@
     });
   }
 
-  function togglePlayerStatus(playerId) {
-    if (attendanceMap[playerId] === currentMode) {
+  function setVoteMode(mode) {
+    currentVoteMode = mode;
+    document.querySelectorAll('.mode-vote').forEach(btn => {
+      if (btn.getAttribute('data-mode') === mode) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+  }
+
+  // 切換投票狀態
+  function applyPlayerVote(playerId) {
+    if (voteMap[playerId] === currentVoteMode) {
+      voteMap[playerId] = "不到"; // 反覆點擊還原為預設（不到）
+    } else {
+      voteMap[playerId] = currentVoteMode;
+    }
+    saveAttendanceToCloud();
+  }
+
+  // 切換點名狀態
+  function applyPlayerAttend(playerId) {
+    if (attendanceMap[playerId] === currentAttendMode) {
       delete attendanceMap[playerId];
     } else {
-      attendanceMap[playerId] = currentMode;
+      attendanceMap[playerId] = currentAttendMode;
     }
     saveAttendanceToCloud();
   }
@@ -499,33 +576,91 @@
     });
   }
 
-  function renderPlayerGrid() {
-    var gridEl = document.getElementById('playerGrid');
-    gridEl.innerHTML = '';
+  // 判斷球員最終的出席狀況
+  function getFinalStatus(player) {
+    var attendStatus = attendanceMap[player.id];
+    var voteStatus = voteMap[player.id] || "不到";
 
+    if (attendStatus === "準時到" || attendStatus === "遲到" || attendStatus === "請假") {
+      return attendStatus;
+    }
+
+    // 沒到場的情況：
+    if (voteStatus === "不到") {
+      return "未投票"; // 沒投票（設為不到）且沒到的人歸類為「未投票」
+    } else {
+      return "缺席";   // 投票選「到」但最後沒到的人歸類為「缺席」
+    }
+  }
+
+  function renderAllGrids() {
+    renderVoteGrid();
+    renderAttendGrid();
+    updateSummary();
+  }
+
+  // 渲染【投票】球員區
+  function renderVoteGrid() {
+    var gridEl = document.getElementById('votePlayerGrid');
+    gridEl.innerHTML = '';
     var sorted = getSortedRoster();
-    var counts = { "準時到": 0, "遲到": 0, "請假": 0, "缺席": 0 };
 
     sorted.forEach(function(player) {
-      var status = attendanceMap[player.id];
-      if (status) {
-        counts[status] = (counts[status] || 0) + 1;
-      } else {
-        counts["缺席"]++;
-      }
+      var voteStatus = voteMap[player.id] || "不到";
 
       var btn = document.createElement('button');
-      btn.className = 'player-btn' + (status ? ' status-' + status : '');
+      btn.className = 'player-btn vote-status-' + voteStatus;
       var numText = player.number ? '#' + player.number : '無背號';
-      btn.innerHTML = `<span class="num">${numText}</span><span>${player.name}</span>`;
-      btn.onclick = function() { togglePlayerStatus(player.id); };
+      
+      btn.innerHTML = `
+        <span class="num">${numText}</span>
+        <span>${player.name}</span>
+        <span style="font-size:10px; opacity:0.8; margin-top:2px;">[${voteStatus}]</span>
+      `;
+
+      btn.onclick = function() { applyPlayerVote(player.id); };
       gridEl.appendChild(btn);
+    });
+  }
+
+  // 渲染【點名】球員區
+  function renderAttendGrid() {
+    var gridEl = document.getElementById('attendPlayerGrid');
+    gridEl.innerHTML = '';
+    var sorted = getSortedRoster();
+
+    sorted.forEach(function(player) {
+      var attendStatus = attendanceMap[player.id];
+
+      var btn = document.createElement('button');
+      btn.className = 'player-btn' + (attendStatus ? ' status-' + attendStatus : '');
+      var numText = player.number ? '#' + player.number : '無背號';
+      
+      btn.innerHTML = `
+        <span class="num">${numText}</span>
+        <span>${player.name}</span>
+        <span style="font-size:10px; opacity:0.8; margin-top:2px;">${attendStatus || '未紀錄'}</span>
+      `;
+
+      btn.onclick = function() { applyPlayerAttend(player.id); };
+      gridEl.appendChild(btn);
+    });
+  }
+
+  function updateSummary() {
+    var sorted = getSortedRoster();
+    var counts = { "準時到": 0, "遲到": 0, "請假": 0, "缺席": 0, "未投票": 0 };
+
+    sorted.forEach(function(player) {
+      var finalStatus = getFinalStatus(player);
+      counts[finalStatus] = (counts[finalStatus] || 0) + 1;
     });
 
     document.getElementById('countOntime').innerText = counts["準時到"];
     document.getElementById('countLate').innerText = counts["遲到"];
     document.getElementById('countLeave').innerText = counts["請假"];
     document.getElementById('countAbsent').innerText = counts["缺席"];
+    document.getElementById('countNoVote').innerText = counts["未投票"];
   }
 
   function toggleBatchBox() {
@@ -584,6 +719,7 @@
   function deleteRosterPlayer(id) {
     roster = roster.filter(function(p) { return p.id !== id; });
     delete attendanceMap[id];
+    delete voteMap[id];
     saveRosterToCloud();
     saveAttendanceToCloud();
   }
@@ -607,7 +743,7 @@
     }
   }
 
-  // Excel 匯出邏輯：將準時到、遲到、請假、缺席分欄顯示
+  // Excel 匯出邏輯：包含準時到、遲到、請假、缺席、未投票
   function exportToExcel() {
     var dateVal = document.getElementById('eventDate').value || '未填日期';
     var nameVal = document.getElementById('eventName').value || '未填活動';
@@ -618,24 +754,26 @@
     var lateList = [];
     var leaveList = [];
     var absentList = [];
+    var noVoteList = [];
 
     sortedRoster.forEach(function(player) {
       var label = (player.number ? '#' + player.number + ' ' : '') + player.name;
-      var status = attendanceMap[player.id] || "缺席";
+      var status = getFinalStatus(player);
 
       if (status === "準時到") ontimeList.push(label);
       else if (status === "遲到") lateList.push(label);
       else if (status === "請假") leaveList.push(label);
-      else absentList.push(label);
+      else if (status === "缺席") absentList.push(label);
+      else if (status === "未投票") noVoteList.push(label);
     });
 
-    var maxRows = Math.max(ontimeList.length, lateList.length, leaveList.length, absentList.length);
+    var maxRows = Math.max(ontimeList.length, lateList.length, leaveList.length, absentList.length, noVoteList.length);
 
     var exportRows = [
-      ["活動日期", dateVal, "", ""],
-      ["活動名稱", nameVal, "", ""],
+      ["活動日期", dateVal, "", "", ""],
+      ["活動名稱", nameVal, "", "", ""],
       [], // 空白行
-      ["準時到", "遲到", "請假", "缺席"]
+      ["準時到", "遲到", "請假", "缺席", "未投票"]
     ];
 
     for (var i = 0; i < maxRows; i++) {
@@ -643,21 +781,23 @@
         ontimeList[i] || "",
         lateList[i] || "",
         leaveList[i] || "",
-        absentList[i] || ""
+        absentList[i] || "",
+        noVoteList[i] || ""
       ]);
     }
 
     var worksheet = XLSX.utils.aoa_to_sheet(exportRows);
 
     worksheet['!cols'] = [
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 18 }
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 16 }
     ];
 
     var workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "點名紀錄");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "點名與投票紀錄");
 
     XLSX.writeFile(workbook, dateVal + '_' + nameVal + '_點名紀錄.xlsx');
   }
