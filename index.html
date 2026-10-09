@@ -183,11 +183,6 @@
       color: white;
       border-color: #b45309;
     }
-    .mode-btn.active[data-mode="請假"] {
-      background: var(--color-leave);
-      color: white;
-      border-color: #1d4ed8;
-    }
     .mode-btn.active[data-mode="到"] {
       background: #0d9488;
       color: white;
@@ -234,6 +229,12 @@
       font-weight: bold;
     }
     .player-btn.vote-status-不到 {
+      background: #fee2e2;
+      color: #991b1b;
+      border-color: #fca5a5;
+      font-weight: bold;
+    }
+    .player-btn.vote-status-未投票 {
       background: #f1f5f9;
       color: #64748b;
       border-color: #cbd5e1;
@@ -250,12 +251,6 @@
       background: #fef3c7;
       color: #78350f;
       border-color: #fde68a;
-      font-weight: bold;
-    }
-    .player-btn.status-請假 {
-      background: #dbeafe;
-      color: #1e3a8a;
-      border-color: #93c5fd;
       font-weight: bold;
     }
 
@@ -328,7 +323,7 @@
       </div>
     </div>
 
-    <!-- 🗳️️ 獨立投票區域 -->
+    <!-- 🗳 獨立投票區域 -->
     <div class="section-label">
       <span>投票狀況</span>
     </div>
@@ -341,12 +336,11 @@
 
     <!-- 🟢 獨立點名區域 -->
     <div class="section-label">
-      <span>出席狀況</span>
+      <span>出席狀況 (僅顯示投票「到」之人員)</span>
     </div>
     <div class="mode-selector">
       <button class="mode-btn mode-attend active" data-mode="準時到" onclick="setAttendMode('準時到')">🟢 準時到</button>
       <button class="mode-btn mode-attend" data-mode="遲到" onclick="setAttendMode('遲到')">🟡 遲到</button>
-      <button class="mode-btn mode-attend" data-mode="請假" onclick="setAttendMode('請假')">🔵 請假</button>
     </div>
     <!-- 點名球員名單網格 -->
     <div class="player-grid" id="attendPlayerGrid"></div>
@@ -447,8 +441,8 @@
   ];
 
   var roster = JSON.parse(JSON.stringify(fixedRoster));
-  var attendanceMap = {}; // 紀錄點名：準時到 / 遲到 / 請假
-  var voteMap = {};       // 紀錄投票：到 / 不到
+  var attendanceMap = {}; // 紀錄點名：準時到 / 遲到
+  var voteMap = {};       // 紀錄投票：到 / 不到 / 未投票(預設)
   
   var currentAttendMode = "準時到"; 
   var currentVoteMode = "到";
@@ -546,10 +540,11 @@
     });
   }
 
-  // 切換投票狀態
+  // 切換投票狀態：點擊已選擇的狀態會取消選取並還原為「未投票」
   function applyPlayerVote(playerId) {
-    if (voteMap[playerId] === currentVoteMode) {
-      voteMap[playerId] = "不到"; // 反覆點擊還原為預設（不到）
+    var currentVal = voteMap[playerId] || "未投票";
+    if (currentVal === currentVoteMode) {
+      voteMap[playerId] = "未投票"; 
     } else {
       voteMap[playerId] = currentVoteMode;
     }
@@ -579,17 +574,22 @@
   // 判斷球員最終的出席狀況
   function getFinalStatus(player) {
     var attendStatus = attendanceMap[player.id];
-    var voteStatus = voteMap[player.id] || "不到";
+    var voteStatus = voteMap[player.id] || "未投票";
 
-    if (attendStatus === "準時到" || attendStatus === "遲到" || attendStatus === "請假") {
+    // 優先採用點名手動設定的狀態
+    if (attendStatus === "準時到" || attendStatus === "遲到") {
       return attendStatus;
     }
 
-    // 沒到場的情況：
+    // 投票「不到」的人，直接歸類為「請假」
     if (voteStatus === "不到") {
-      return "未投票"; // 沒投票（設為不到）且沒到的人歸類為「未投票」
+      return "請假";
+    } else if (voteStatus === "到") {
+      // 投票選「到」但最後點名沒到的人歸類為「缺席」
+      return "缺席";
     } else {
-      return "缺席";   // 投票選「到」但最後沒到的人歸類為「缺席」
+      // 沒投票的人歸類為「未投票」
+      return "未投票";
     }
   }
 
@@ -599,14 +599,14 @@
     updateSummary();
   }
 
-  // 渲染【投票】球員區
+  // 渲染【投票】球員區（顯示所有球員）
   function renderVoteGrid() {
     var gridEl = document.getElementById('votePlayerGrid');
     gridEl.innerHTML = '';
     var sorted = getSortedRoster();
 
     sorted.forEach(function(player) {
-      var voteStatus = voteMap[player.id] || "不到";
+      var voteStatus = voteMap[player.id] || "未投票";
 
       var btn = document.createElement('button');
       btn.className = 'player-btn vote-status-' + voteStatus;
@@ -623,13 +623,23 @@
     });
   }
 
-  // 渲染【點名】球員區
+  // 渲染【點名】球員區（僅顯示投票「到」之人員）
   function renderAttendGrid() {
     var gridEl = document.getElementById('attendPlayerGrid');
     gridEl.innerHTML = '';
     var sorted = getSortedRoster();
 
-    sorted.forEach(function(player) {
+    // 過濾出只有投票為「到」的球員
+    var attendingPlayers = sorted.filter(function(player) {
+      return voteMap[player.id] === "到";
+    });
+
+    if (attendingPlayers.length === 0) {
+      gridEl.innerHTML = '<div class="empty-tip" style="grid-column: 1/-1;">目前無投票為「到」的人員</div>';
+      return;
+    }
+
+    attendingPlayers.forEach(function(player) {
       var attendStatus = attendanceMap[player.id];
 
       var btn = document.createElement('button');
