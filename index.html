@@ -371,6 +371,9 @@
     measurementId: "G-0KB6SDNDNQ"
   };
 
+  // Google Apps Script 雲端上傳 Web App 網址
+  const GAS_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxyVWHQzOazEflRwGKT4k1_tlJzND5cCdXyaaWRBzwEYtA2gHGtYlm4r758BxePxS_9fg/exec";
+
   // 初始化 Firebase
   firebase.initializeApp(firebaseConfig);
   const db = firebase.database();
@@ -442,7 +445,7 @@
 
   var roster = JSON.parse(JSON.stringify(fixedRoster));
   var attendanceMap = {}; // 紀錄點名：準時到 / 遲到
-  var voteMap = {};       // 紀錄投票：到 / 不到 / 未投票(預設)
+  var voteMap = {};        // 紀錄投票：到 / 不到 / 未投票(預設)
   
   var currentAttendMode = "準時到"; 
   var currentVoteMode = "到";
@@ -540,7 +543,6 @@
     });
   }
 
-  // 切換投票狀態：點擊已選擇的狀態會取消選取並還原為「未投票」
   function applyPlayerVote(playerId) {
     var currentVal = voteMap[playerId] || "未投票";
     if (currentVal === currentVoteMode) {
@@ -551,7 +553,6 @@
     saveAttendanceToCloud();
   }
 
-  // 切換點名狀態
   function applyPlayerAttend(playerId) {
     if (attendanceMap[playerId] === currentAttendMode) {
       delete attendanceMap[playerId];
@@ -571,24 +572,19 @@
     });
   }
 
-  // 判斷球員最終的出席狀況
   function getFinalStatus(player) {
     var attendStatus = attendanceMap[player.id];
     var voteStatus = voteMap[player.id] || "未投票";
 
-    // 優先採用點名手動設定的狀態
     if (attendStatus === "準時到" || attendStatus === "遲到") {
       return attendStatus;
     }
 
-    // 投票「不到」的人，直接歸類為「請假」
     if (voteStatus === "不到") {
       return "請假";
     } else if (voteStatus === "到") {
-      // 投票選「到」但最後點名沒到的人歸類為「缺席」
       return "缺席";
     } else {
-      // 沒投票的人歸類為「未投票」
       return "未投票";
     }
   }
@@ -599,7 +595,6 @@
     updateSummary();
   }
 
-  // 渲染【投票】球員區（顯示所有球員）
   function renderVoteGrid() {
     var gridEl = document.getElementById('votePlayerGrid');
     gridEl.innerHTML = '';
@@ -623,13 +618,11 @@
     });
   }
 
-  // 渲染【點名】球員區（僅顯示投票「到」之人員）
   function renderAttendGrid() {
     var gridEl = document.getElementById('attendPlayerGrid');
     gridEl.innerHTML = '';
     var sorted = getSortedRoster();
 
-    // 過濾出只有投票為「到」的球員
     var attendingPlayers = sorted.filter(function(player) {
       return voteMap[player.id] === "到";
     });
@@ -753,8 +746,23 @@
     }
   }
 
-  // Excel 匯出邏輯：包含準時到、遲到、請假、缺席、未投票
-  function exportToExcel() {
+  // 輔助函式：將 workbook 轉為 base64
+  function workbookToBase64(workbook) {
+    var wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    var blob = new Blob([wbout], { type: "application/octet-stream" });
+    return new Promise((resolve, reject) => {
+      var reader = new FileReader();
+      reader.onload = function() {
+        var base64String = reader.result.split(',')[1];
+        resolve(base64String);
+      };
+      reader.onerror = error => reject(error);
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  // Excel 匯出與雲端自動同步邏輯
+  async function exportToExcel() {
     var dateVal = document.getElementById('eventDate').value || '未填日期';
     var nameVal = document.getElementById('eventName').value || '未填活動';
 
@@ -809,7 +817,39 @@
     var workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "點名與投票紀錄");
 
-    XLSX.writeFile(workbook, dateVal + '_' + nameVal + '_點名紀錄.xlsx');
+    var fileName = dateVal + '_' + nameVal + '_點名紀錄.xlsx';
+
+    // 1. 本地下載
+    XLSX.writeFile(workbook, fileName);
+
+    // 2. 自動上傳到 Google 雲端硬碟
+    if (GAS_WEB_APP_URL && GAS_WEB_APP_URL.startsWith("https://")) {
+      try {
+        document.getElementById('syncStatus').innerText = "☁️ 正在檢查並上傳檔案至雲端硬碟...";
+        var base64Data = await workbookToBase64(workbook);
+
+        let response = await fetch(GAS_WEB_APP_URL, {
+          method: "POST",
+          body: JSON.stringify({
+            date: dateVal,
+            fileName: fileName,
+            fileData: base64Data
+          })
+        });
+
+        let result = await response.json();
+        if (result.status === "success") {
+          document.getElementById('syncStatus').innerText = "🟢 雲端同步完成：已成功建立/存入「" + dateVal + "」資料夾";
+        } else if (result.status === "skipped") {
+          document.getElementById('syncStatus').innerText = "🟡 雲端已有相同檔案，已略過重複上傳";
+        } else {
+          document.getElementById('syncStatus').innerText = "🔴 雲端上傳失敗：" + result.message;
+        }
+      } catch (err) {
+        console.error(err);
+        document.getElementById('syncStatus').innerText = "🔴 雲端連線發生錯誤";
+      }
+    }
   }
 
   window.onload = init;
